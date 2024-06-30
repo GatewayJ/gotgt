@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 
 	log "github.com/sirupsen/logrus"
 
@@ -100,35 +101,104 @@ func (bs *FileBackingStore) Size(dev *api.SCSILu) uint64 {
 	return bs.DataSize
 }
 
+var s3FilePath = "/var/tmp/file_"
+
 func (bs *FileBackingStore) Read(offset, tl int64) ([]byte, error) {
-	if bs.file == nil {
-		return nil, fmt.Errorf("Backend store is nil")
+	log.Info("read")
+	fileNum := offset / 1024 / 1024 / 1024      // 文件编号 从0开始
+	fileOffset := offset % (1024 * 1024 * 1024) // 文件偏移量 开始待读取位置
+
+	tmpbuf := make([]byte, 0)
+	for i := 0; i < int(tl); i++ { //todo 这样读的很慢，目录的元数据受损。如果不跨文件读取是正常的
+		var tmp = make([]byte, 1)
+		filePath := s3FilePath + strconv.FormatInt(fileNum, 10)
+		f, err := os.OpenFile(filePath, os.O_RDWR, 0666)
+		if err != nil {
+			log.Error(err)
+			return nil, err
+		}
+
+		n, err := f.ReadAt(tmp, fileOffset)
+		log.Infof("read length %d, offset %d, fileNum %d", n, fileOffset, fileNum)
+		if err == io.EOF {
+			log.Errorf("read EOF")
+		} else if err != nil {
+			log.Error(err)
+			return nil, err
+		}
+		fileOffset++
+		offset++
+		tmpbuf = append(tmpbuf, tmp...)
+		f.Close()
 	}
-	tmpbuf := make([]byte, tl)
-	length, err := bs.file.ReadAt(tmpbuf, offset)
-	if err != nil {
-		return nil, err
-	}
-	if length != len(tmpbuf) {
+
+	if tl != int64(len(tmpbuf)) {
+		log.Error("read != ")
 		return nil, fmt.Errorf("read is not same length of length")
 	}
 	return tmpbuf, nil
 }
 
 func (bs *FileBackingStore) Write(wbuf []byte, offset int64) error {
-	length, err := bs.file.WriteAt(wbuf, offset)
+
+	fileNum := offset / (1024 * 1024 * 1024)                                // 文件编号 从0开始
+	fileNumComplete := (offset + int64(len(wbuf)) - 1) / 1024 / 1024 / 1024 //  写完的文件编号
+	fileOffset := offset % (1024 * 1024 * 1024)                             // 文件偏移量 开始待写入位置
+	log.Infof("write filenum %d", fileNum)
+	filePath := s3FilePath + strconv.FormatInt(fileNum, 10)
+	f, err := os.OpenFile(filePath, os.O_RDWR, 0666)
+	defer f.Close()
 	if err != nil {
 		log.Error(err)
 		return err
 	}
-	if length != len(wbuf) {
-		return fmt.Errorf("write is not same length of length")
+	if fileNum == fileNumComplete {
+		// 没有跨越文件
+		_, err := f.WriteAt(wbuf, offset)
+		// log.Infof("write length %d, offset %d", length, offset)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+	} else {
+		// 跨越文件
+		length, err := f.WriteAt(wbuf[:1024*1024*1024-fileOffset], fileOffset)
+		log.Infof("write length %d, offset %d", length, offset)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+		length, err = f.WriteAt(wbuf[1024*1024*1024-fileOffset:], 0)
+		log.Infof("write length %d, offset %d", length, offset)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
 	}
+	f.Sync()
+	// if length != len(wbuf) {
+	// 	return fmt.Errorf("write is not same length of length")
+	// }
 	return nil
 }
 
 func (bs *FileBackingStore) DataSync(offset, tl int64) error {
-	return util.Fdatasync(bs.file)
+	log.Info("sync")
+	for i := 0; i < 11; i++ {
+
+		filePath := s3FilePath + strconv.FormatInt(int64(i), 10)
+		f, err := os.OpenFile(filePath, os.O_RDWR, 0666)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+		// f.Sync()
+		util.Fdatasync(f)
+		f.Close()
+	}
+
+	// return util.Fdatasync(bs.file)
+	return nil
 }
 
 func (bs *FileBackingStore) DataAdvise(offset, length int64, advise uint32) error {

@@ -28,6 +28,31 @@ $ git clone https://github.com/gostor/gotgt
 $ cd gotgt
 $ make
 ```
+### ISCSI Command
+```
+systemctl restart open-iscsi iscsid
+ 
+# 查看iSCSI Initiator工作状态
+systemctl status open-iscsi
+iscsiadm -m session -o show
+ 
+# 发现iscsi target
+iscsiadm -m discovery -t sendtargets -p 127.0.0.1
+或者
+iscsiadm -m node --login
+ 
+# 登陆iscsi target
+iscsiadm -m node -T iqn.2021-03.bee.com:lun1 -p  127.0.0.1 -l
+ 
+# 登出iscsi target
+iscsiadm -m node -T iqn.2021-03.bee.com:lun1 -p  127.0.0.1 -u
+ 
+# 查看LUN设备
+fdisk -l
+cat /proc/partitions
+lsblk
+# 查看UUID
+```
 
 ### How to use
 

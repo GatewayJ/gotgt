@@ -42,10 +42,10 @@ iscsiadm -m discovery -t sendtargets -p 127.0.0.1
 iscsiadm -m node --login
  
 # 登陆iscsi target
-iscsiadm -m node -T iqn.2021-03.bee.com:lun1 -p  127.0.0.1 -l
+iscsiadm -m node -T iqn.2016-09.com.gotgt.gostor:02:example-tgt-0 -p  127.0.0.1 -l
  
 # 登出iscsi target
-iscsiadm -m node -T iqn.2021-03.bee.com:lun1 -p  127.0.0.1 -u
+iscsiadm -m node -T iqn.2016-09.com.gotgt.gostor:02:example-tgt-0 -p  127.0.0.1 -u
  
 # 查看LUN设备
 fdisk -l

@@ -17,6 +17,8 @@ limitations under the License.
 // SCSI block command processing
 package scsi
 
+// sbc starts for SCSI Primary Commands
+
 import (
 	"encoding/binary"
 	"fmt"
